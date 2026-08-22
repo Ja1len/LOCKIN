@@ -20,30 +20,59 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/lib/theme-provider";
 import {
-  getProfile,
-  saveProfile,
-  getSessions,
-  getQuizResults,
   type UserProfile,
   type Subject,
-  type ThemeMode,
+  type StudySession,
+  type QuizResultRecord,
 } from "@/lib/store";
+import { getSessions, getQuizResults } from "@/lib/api-client";
+import { getCurrentUser, updateUserAccount } from "@/lib/auth";
+
+const EMPTY_PROFILE: UserProfile = {
+  name: "",
+  institution: "",
+  course: "",
+  email: "",
+  subjects: [],
+  avatarInitial: "S",
+};
 
 export default function ProfilePage() {
   const { theme, setTheme, themes } = useTheme();
-  const [profile, setProfile] = useState<UserProfile>(getProfile());
-  const [name, setName] = useState(profile.name);
-  const [institution, setInstitution] = useState(profile.institution);
-  const [course, setCourse] = useState(profile.course);
-  const [email, setEmail] = useState(profile.email);
-  const [subjects, setSubjects] = useState<Subject[]>(profile.subjects);
+  const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
+  const [name, setName] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [course, setCourse] = useState("");
+  const [email, setEmail] = useState("");
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubjectInput, setNewSubjectInput] = useState("");
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [sessions, setSessions] = useState<StudySession[]>([]);
+  const [quizResults, setQuizResults] = useState<QuizResultRecord[]>([]);
+
+  useEffect(() => {
+    getCurrentUser().then((user) => {
+      if (!user) return;
+      const userProfile: UserProfile = {
+        name: user.name,
+        institution: user.institution,
+        course: user.course,
+        email: user.email,
+        subjects: user.subjects,
+        avatarInitial: user.avatarInitial,
+      };
+      setProfile(userProfile);
+      setName(user.name);
+      setInstitution(user.institution);
+      setCourse(user.course);
+      setEmail(user.email);
+      setSubjects(user.subjects);
+    });
+    getSessions().then(setSessions);
+    getQuizResults().then(setQuizResults);
+  }, []);
 
   // Statistics
-  const sessions = getSessions();
-  const quizResults = getQuizResults();
-
   const totalMinutes = sessions.reduce((acc, s) => acc + s.duration, 0) + 120; // Base history for realistic demo
   const totalHours = (totalMinutes / 60).toFixed(1);
   const completedBlocks = sessions.length + 8;
@@ -54,7 +83,7 @@ export default function ProfilePage() {
         )
       : 85;
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated: UserProfile = {
       ...profile,
@@ -66,31 +95,34 @@ export default function ProfilePage() {
       avatarInitial: name.trim().charAt(0).toUpperCase() || "A",
     };
     setProfile(updated);
-    saveProfile(updated);
+    await updateUserAccount({
+      name: updated.name,
+      institution: updated.institution,
+      course: updated.course,
+      subjects: updated.subjects,
+    });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3500);
   };
 
-  const handleAddSubject = (e: React.FormEvent) => {
+  const handleAddSubject = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = newSubjectInput.trim();
     if (!val) return;
     if (!subjects.includes(val as Subject)) {
       const updated = [...subjects, val as Subject];
       setSubjects(updated);
-      const updatedProfile = { ...profile, subjects: updated };
-      setProfile(updatedProfile);
-      saveProfile(updatedProfile);
+      setProfile({ ...profile, subjects: updated });
+      await updateUserAccount({ subjects: updated });
     }
     setNewSubjectInput("");
   };
 
-  const handleRemoveSubject = (sub: Subject) => {
+  const handleRemoveSubject = async (sub: Subject) => {
     const updated = subjects.filter((s) => s !== sub);
     setSubjects(updated);
-    const updatedProfile = { ...profile, subjects: updated };
-    setProfile(updatedProfile);
-    saveProfile(updatedProfile);
+    setProfile({ ...profile, subjects: updated });
+    await updateUserAccount({ subjects: updated });
   };
 
   return (

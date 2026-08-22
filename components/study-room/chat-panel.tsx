@@ -4,15 +4,10 @@ import { useState, useRef, useEffect, type FormEvent } from "react";
 import { MessageCircle, Send, Sparkles, Smile, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { saveRoomMessage } from "@/lib/store";
+import { getProfile, getRoomMessages, sendRoomMessage, type ChatMessage } from "@/lib/api-client";
+import { getPusherClient } from "@/lib/pusher-client";
 
-export interface ChatMessage {
-  id?: string;
-  name: string;
-  time: string;
-  text: string;
-  tone: string;
-}
+export type { ChatMessage };
 
 interface ChatPanelProps {
   roomId?: string;
@@ -27,34 +22,42 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [inputText, setInputText] = useState("");
+  const [userName, setUserName] = useState("Student");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMessages(initialMessages);
-  }, [initialMessages]);
+    getProfile().then((profile) => {
+      if (profile?.name) setUserName(profile.name);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!roomId) return;
+    getRoomMessages(roomId).then(setMessages);
+
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(`room-${roomId}`);
+    channel.bind("new-message", (message: ChatMessage) => {
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+    });
+
+    return () => {
+      channel.unbind("new-message");
+      pusher.unsubscribe(`room-${roomId}`);
+    };
+  }, [roomId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = (e: FormEvent) => {
+  const handleSend = async (e: FormEvent) => {
     e.preventDefault();
     const text = inputText.trim();
-    if (!text) return;
+    if (!text || !roomId) return;
 
-    const newMsg: ChatMessage = {
-      id: String(Date.now()),
-      name: "Ailee",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      text,
-      tone: "bg-emerald-100 text-emerald-800",
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
     setInputText("");
-    if (roomId) {
-      saveRoomMessage(roomId, text, "Ailee");
-    }
+    await sendRoomMessage(roomId, text);
   };
 
   const isSilent = roomType === "Silent Focus";
@@ -90,7 +93,7 @@ export function ChatPanel({
       {/* Message Feed */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4 max-h-[420px]">
         {messages.map((item, index) => {
-          const isMe = item.name === "Ailee";
+          const isMe = item.name === userName || item.name === "You";
           return (
             <div
               key={item.id || `${item.name}-${index}`}

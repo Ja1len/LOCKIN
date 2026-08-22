@@ -11,7 +11,8 @@ import { RoomGoalCard } from "@/components/study-room/room-goal-card";
 import { StudyRoomHeader } from "@/components/study-room/study-room-header";
 import { TeachingCanvas } from "@/components/study-room/teaching-canvas";
 import { DiscussionBoard } from "@/components/study-room/discussion-board";
-import { getRoomById, addSession, type RoomData, type Subject } from "@/lib/store";
+import { type RoomData, type Subject } from "@/lib/store";
+import { getRoomById, addSession } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }) {
@@ -22,8 +23,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
   const [sessionCompletedAlert, setSessionCompletedAlert] = useState(false);
 
   useEffect(() => {
-    const loaded = getRoomById(roomId);
-    setRoom(loaded);
+    getRoomById(roomId).then(setRoom);
   }, [roomId]);
 
   const activeRoom = room || {
@@ -41,9 +41,6 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
       { name: "Aiman", initials: "AI", role: "Room Host", online: true, tone: "bg-sky-100 text-sky-800", isHost: true },
       { name: "Sarah Tan", initials: "ST", role: "Member", online: true, tone: "bg-amber-100 text-amber-800" },
       { name: "Daniel Lim", initials: "DL", role: "Member", online: true, tone: "bg-violet-100 text-violet-800" },
-    ],
-    initialMessages: [
-      { id: "1", name: "Aiman", time: "10:00 AM", text: "Welcome to Silent Focus! Let's lock in for this block.", tone: "bg-sky-100 text-sky-800" },
     ],
   };
 
@@ -209,11 +206,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
           </div>
 
           {/* Interactive Chat Column */}
-          <ChatPanel
-            roomId={activeRoom.id}
-            roomType={activeRoom.type}
-            initialMessages={activeRoom.initialMessages}
-          />
+          <ChatPanel roomId={activeRoom.id} roomType={activeRoom.type} />
         </div>
       </main>
 

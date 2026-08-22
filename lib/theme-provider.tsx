@@ -1,7 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { getTheme, saveTheme, type ThemeMode } from "./store";
+import { type ThemeMode } from "./store";
+import { getTheme, saveTheme } from "./api-client";
 
 interface ThemeContextType {
   theme: ThemeMode;
@@ -54,9 +55,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = getTheme();
-    setThemeState(saved);
-    setMounted(true);
+    getTheme().then((saved) => {
+      setThemeState(saved);
+      setMounted(true);
+    });
   }, []);
 
   useEffect(() => {

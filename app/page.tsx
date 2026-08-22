@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +8,8 @@ import {
   BookOpen,
   Check,
   CircleUserRound,
+  Eye,
+  EyeOff,
   Flame,
   LayoutDashboard,
   Leaf,
@@ -18,11 +20,23 @@ import {
   ShieldCheck,
   Brain,
   Timer,
+  AlertCircle,
+  School,
+  GraduationCap,
+  Lock,
+  Mail,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import {
+  getCurrentUser,
+  loginUser,
+  registerUser,
+  type UserAccount,
+} from "@/lib/auth";
 
 function Mark({ dark = false }: { dark?: boolean }) {
   return (
@@ -47,48 +61,78 @@ function Mark({ dark = false }: { dark?: boolean }) {
 
 export default function Home() {
   const [view, setView] = useState<"landing" | "login">("landing");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    getCurrentUser().then(setCurrentUser);
+  }, []);
 
   const handleLoginSuccess = () => {
     router.push("/dashboard");
   };
 
+  const handleOpenAuth = (mode: "signin" | "signup") => {
+    setAuthMode(mode);
+    setView("login");
+  };
+
   if (view === "login") {
     return (
-      <Login
+      <AuthView
+        initialMode={authMode}
         onBack={() => setView("landing")}
-        onContinue={handleLoginSuccess}
+        onSuccess={handleLoginSuccess}
       />
     );
   }
 
   return (
     <Landing
-      onLogin={() => setView("login")}
-      onStart={() => setView("login")}
+      currentUser={currentUser}
+      onOpenSignIn={() => handleOpenAuth("signin")}
+      onOpenSignUp={() => handleOpenAuth("signup")}
     />
   );
 }
 
 function Landing({
-  onLogin,
-  onStart,
+  currentUser,
+  onOpenSignIn,
+  onOpenSignUp,
 }: {
-  onLogin: () => void;
-  onStart: () => void;
+  currentUser: UserAccount | null;
+  onOpenSignIn: () => void;
+  onOpenSignUp: () => void;
 }) {
+  const router = useRouter();
+
   return (
     <div className="min-h-screen overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
-      {/* Header */}
+      {/* Streamlined Header: single contextual action button */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6 md:px-10">
         <Mark />
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={onLogin} className="text-sm font-semibold">
-            Log in <ArrowRight size={15} />
-          </Button>
-          <Button onClick={onStart} className="rounded-xl text-sm font-semibold shadow-xs">
-            Get Started
-          </Button>
+        <div>
+          {currentUser ? (
+            <Button
+              id="header-workspace-btn"
+              onClick={() => router.push("/dashboard")}
+              className="gap-2 rounded-xl text-sm font-semibold shadow-xs"
+            >
+              <span>Hi, {currentUser.name}</span>
+              <ArrowRight size={15} />
+            </Button>
+          ) : (
+            <Button
+              id="header-signin-btn"
+              variant="outline"
+              onClick={onOpenSignIn}
+              className="rounded-xl border-[var(--line)] bg-[var(--card)] text-sm font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+            >
+              Sign In
+            </Button>
+          )}
         </div>
       </header>
 
@@ -110,13 +154,27 @@ function Landing({
               LOCKIN is a calm, collaborative digital workspace for college students. Combine peer accountability rooms, structured Pomodoro focus, and AI-powered active recall quizzes.
             </p>
 
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Button size="lg" onClick={onStart} className="gap-2 rounded-xl text-base font-semibold px-7 shadow-sm">
-                Enter Your Workspace <ArrowRight size={17} />
-              </Button>
-              <Button size="lg" variant="outline" onClick={onLogin} className="rounded-xl text-base">
-                I have an account
-              </Button>
+            {/* Single Primary Call-to-Action */}
+            <div className="pt-2">
+              {currentUser ? (
+                <Button
+                  id="hero-enter-btn"
+                  size="lg"
+                  onClick={() => router.push("/dashboard")}
+                  className="gap-2 rounded-xl px-8 text-base font-semibold shadow-md hover:scale-[1.01] transition"
+                >
+                  Enter Workspace <ArrowRight size={18} />
+                </Button>
+              ) : (
+                <Button
+                  id="hero-lockin-btn"
+                  size="lg"
+                  onClick={onOpenSignUp}
+                  className="gap-2 rounded-xl px-8 text-base font-semibold shadow-md hover:scale-[1.01] transition"
+                >
+                  Lock In Now <ArrowRight size={18} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center gap-6 pt-4 text-xs text-zinc-500">
@@ -185,7 +243,7 @@ function Landing({
           <Value
             icon={<Brain size={20} />}
             title="Active Recall AI Tutor"
-            text="Upload PDF lecture notes to generate instant multi-question quizzes, smart flashcards, and conceptual summaries."
+            text="Upload lecture notes to generate instant multi-question quizzes, smart flashcards, and conceptual summaries."
           />
           <Value
             icon={<LayoutDashboard size={20} />}
@@ -198,89 +256,426 @@ function Landing({
   );
 }
 
-function Login({
+function AuthView({
+  initialMode = "signin",
   onBack,
-  onContinue,
+  onSuccess,
 }: {
+  initialMode: "signin" | "signup";
   onBack: () => void;
-  onContinue: () => void;
+  onSuccess: () => void;
 }) {
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form states
+  const [email, setEmail] = useState("ailee@sunway.edu.my");
+  const [password, setPassword] = useState("lockin123");
+  const [name, setName] = useState("");
+  const [institution, setInstitution] = useState("Sunway University");
+  const [course, setCourse] = useState("Computer Science");
+
+  const handleSignIn = async (e: FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    const result = await loginUser({ email, password });
+    setIsSubmitting(false);
+
+    if (result.success) {
+      onSuccess();
+    } else {
+      setErrorMessage(result.error || "Login failed. Please check your credentials.");
+    }
+  };
+
+  const handleSignUp = async (e: FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    const result = await registerUser({
+      name,
+      email,
+      password,
+      institution,
+      course,
+    });
+    setIsSubmitting(false);
+
+    if (result.success) {
+      onSuccess();
+    } else {
+      setErrorMessage(result.error || "Failed to create account.");
+    }
+  };
+
+  const handleQuickDemoLogin = async () => {
+    const result = await loginUser({ email: "ailee@sunway.edu.my", password: "lockin123" });
+    if (result.success) {
+      onSuccess();
+    }
+  };
+
   return (
     <div className="grid min-h-screen bg-[var(--paper)] lg:grid-cols-2">
-      <section className="flex flex-col p-6 sm:p-10">
-        <button onClick={onBack} className="w-fit">
-          <Mark />
-        </button>
-
-        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-12">
-          <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-            Welcome to LOCKIN
-          </p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-zinc-900">
-            Settle in.
-          </h1>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-500">
-            Sign in as demo student <strong className="text-zinc-800">Ailee</strong> to enter your study space.
-          </p>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onContinue();
-            }}
-            className="mt-8 space-y-4"
+      {/* Left Form Column */}
+      <section className="flex flex-col p-6 sm:p-10 justify-between">
+        <div>
+          <button
+            onClick={onBack}
+            className="group inline-flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition"
           >
+            <Mark />
+            <span className="hidden sm:inline text-zinc-400 group-hover:text-zinc-700">
+              ← Back to home
+            </span>
+          </button>
+        </div>
+
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-8 sm:py-12">
+          {/* Mode Switcher Tabs */}
+          <div className="mb-6 flex rounded-xl bg-zinc-200/70 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signin");
+                setErrorMessage("");
+              }}
+              className={cn(
+                "flex-1 rounded-lg py-2 text-xs font-bold transition",
+                mode === "signin"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-500 hover:text-zinc-900"
+              )}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setErrorMessage("");
+              }}
+              className={cn(
+                "flex-1 rounded-lg py-2 text-xs font-bold transition",
+                mode === "signup"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-500 hover:text-zinc-900"
+              )}
+            >
+              Create Account
+            </button>
+          </div>
+
+          {/* Heading */}
+          {mode === "signin" ? (
             <div>
-              <label className="block text-xs font-semibold text-zinc-700">
-                Student Email
-              </label>
-              <Input
-                type="email"
-                defaultValue="ailee@sunway.edu.my"
-                className="mt-1.5 rounded-xl"
-                required
-              />
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                Ready to Lock In?
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
+                Settle into your space.
+              </h1>
+              <p className="mt-2 text-xs text-zinc-500 sm:text-sm">
+                Enter your student credentials to access your rooms and focus stats.
+              </p>
             </div>
-
+          ) : (
             <div>
-              <label className="block text-xs font-semibold text-zinc-700">
-                Password
-              </label>
-              <Input
-                type="password"
-                defaultValue="lockin123"
-                className="mt-1.5 rounded-xl"
-                required
-              />
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                Start Your Journey
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
+                Create your account.
+              </h1>
+              <p className="mt-2 text-xs text-zinc-500 sm:text-sm">
+                Join students staying accountable and locking in every day.
+              </p>
             </div>
+          )}
 
-            <Button type="submit" className="mt-4 w-full rounded-xl py-2.5 font-semibold">
-              Continue to Dashboard <ArrowRight size={16} />
-            </Button>
-          </form>
+          {/* Error Message Alert */}
+          {errorMessage && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs text-red-700 border border-red-200 animate-in fade-in">
+              <AlertCircle size={16} className="shrink-0 text-red-600" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-          <p className="mt-8 text-center text-xs text-zinc-500">
-            Demo credentials are pre-filled. Click continue to enter.
+          {/* Sign In Form */}
+          {mode === "signin" ? (
+            <form onSubmit={handleSignIn} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Student Email
+                </label>
+                <div className="relative mt-1">
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@university.edu"
+                    className="rounded-xl pr-9 text-sm"
+                    required
+                  />
+                  <Mail size={16} className="absolute right-3 top-3 text-zinc-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Password
+                  </label>
+                </div>
+                <div className="relative mt-1">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="rounded-xl pr-9 text-sm"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-zinc-400 hover:text-zinc-600 transition"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2 text-zinc-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded text-emerald-800 focus:ring-emerald-700"
+                  />
+                  <span>Remember me</span>
+                </label>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="mt-2 w-full gap-2 rounded-xl py-2.5 font-semibold shadow-xs"
+              >
+                <span>{isSubmitting ? "Signing In..." : "Sign In to Workspace"}</span>
+                <ArrowRight size={16} />
+              </Button>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleQuickDemoLogin}
+                  className="w-full rounded-xl border border-dashed border-emerald-700/30 bg-emerald-50/70 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-100/70 transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles size={14} className="text-emerald-700" />
+                  <span>1-Click Demo Login (Ailee)</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* Sign Up / Create Account Form */
+            <form onSubmit={handleSignUp} className="mt-6 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Full Name
+                </label>
+                <div className="relative mt-1">
+                  <Input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Sarah Tan"
+                    className="rounded-xl text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Student Email
+                </label>
+                <div className="relative mt-1">
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="sarah@sunway.edu.my"
+                    className="rounded-xl text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Institution
+                  </label>
+                  <Input
+                    type="text"
+                    value={institution}
+                    onChange={(e) => setInstitution(e.target.value)}
+                    placeholder="e.g. Sunway University"
+                    className="mt-1 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Course / Major
+                  </label>
+                  <Input
+                    type="text"
+                    value={course}
+                    onChange={(e) => setCourse(e.target.value)}
+                    placeholder="e.g. Computer Science"
+                    className="mt-1 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Create Password (min 4 characters)
+                </label>
+                <div className="relative mt-1">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="rounded-xl pr-9 text-sm"
+                    required
+                    minLength={4}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-zinc-400 hover:text-zinc-600 transition"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="mt-2 w-full gap-2 rounded-xl py-2.5 font-semibold shadow-xs"
+              >
+                <span>{isSubmitting ? "Creating Account..." : "Create Account & Lock In"}</span>
+                <ArrowRight size={16} />
+              </Button>
+            </form>
+          )}
+
+          {/* Footer note */}
+          <p className="mt-6 text-center text-xs text-zinc-500">
+            {mode === "signin" ? (
+              <span>
+                New to LOCKIN?{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("signup")}
+                  className="font-bold text-emerald-800 hover:underline"
+                >
+                  Create an account
+                </button>
+              </span>
+            ) : (
+              <span>
+                Already have credentials?{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("signin")}
+                  className="font-bold text-emerald-800 hover:underline"
+                >
+                  Sign in
+                </button>
+              </span>
+            )}
           </p>
+        </div>
+
+        <div className="text-center text-[11px] text-zinc-400">
+          Peer accountability • Structured focus blocks • AI active recall
         </div>
       </section>
 
-      <aside className="hidden bg-[#1b2920] p-12 lg:flex lg:flex-col lg:justify-between text-white">
-        <Mark dark />
-        <div className="max-w-md">
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-            Continuous Improvement
-          </span>
-          <h2 className="mt-4 text-4xl font-bold leading-tight tracking-tight text-white">
-            Study. Focus. Recall. Improve.
-          </h2>
-          <p className="mt-4 text-sm leading-relaxed text-emerald-100/70">
-            LOCKIN brings together everything you need to stay on track: real-time collaborative rooms, distraction-free timers, and AI-powered active recall quizzes.
-          </p>
+      {/* Right Column: Cleaned up green responsive showcase (no duplicate logo, no version text) */}
+      <aside className="hidden bg-[#1b2920] p-12 lg:flex lg:flex-col lg:justify-between text-white relative overflow-hidden">
+        {/* Ambient background glow */}
+        <div className="absolute -right-20 -top-20 h-80 w-80 rounded-full bg-emerald-600/15 blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+
+        {/* Top Status Badge */}
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-950/70 px-3.5 py-1.5 text-xs font-semibold text-emerald-300 backdrop-blur">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Ready to Lock In?</span>
+          </div>
         </div>
-        <p className="text-xs text-emerald-200/50">
-          LOCKIN Version 0 · Student Productivity Platform
-        </p>
+
+        {/* Central Content */}
+        <div className="relative z-10 max-w-md space-y-6">
+          <div>
+            <h2 className="text-4xl font-bold leading-tight tracking-tight text-white">
+              Study Together. <br />
+              <span className="text-[#bfe3cf]">Focus Deeper. Excel.</span>
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-emerald-100/70">
+              LOCKIN is built for college students who value deep concentration. Join peers in live focus rooms, set structured timers, and review lecture concepts with AI.
+            </p>
+          </div>
+
+          {/* Interactive Live Status Widget */}
+          <div className="rounded-2xl border border-emerald-800/40 bg-white/5 p-5 backdrop-blur-md space-y-4 shadow-xl">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                <Flame size={15} className="text-amber-400" /> Live Accountability
+              </span>
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-200">
+                142 students online
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-left">
+              <div className="rounded-xl bg-black/20 p-3">
+                <span className="text-[11px] text-emerald-200/60 block">Focus Mode</span>
+                <span className="text-sm font-bold text-white">Silent Study</span>
+              </div>
+              <div className="rounded-xl bg-black/20 p-3">
+                <span className="text-[11px] text-emerald-200/60 block">Avg. Session</span>
+                <span className="text-sm font-bold text-white">45 Mins</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-200/70">
+              <Check size={14} className="text-[#bfe3cf]" />
+              <span>Personalized notes & quiz records saved automatically</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Motivational Quote / Info */}
+        <div className="relative z-10 text-xs text-emerald-200/60 flex items-center justify-between">
+          <span>Your quiet digital study sanctuary</span>
+          <span className="text-[11px] text-emerald-300/80 font-medium">⚡️ Zero Distractions</span>
+        </div>
       </aside>
     </div>
   );
@@ -301,8 +696,8 @@ function Value({
         {icon}
       </span>
       <div>
-        <h3 className="font-bold text-[var(--ink)] text-base">{title}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{text}</p>
+        <h2 className="text-base font-bold text-zinc-900 dark:text-white">{title}</h2>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">{text}</p>
       </div>
     </div>
   );

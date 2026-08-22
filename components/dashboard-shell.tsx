@@ -22,34 +22,35 @@ import { ProgressBar } from "@/components/progress-bar";
 import { RoomCard } from "@/components/room-card";
 import { Button } from "@/components/ui/button";
 import { StandalonePomodoroModal } from "@/components/pomodoro/standalone-pomodoro-modal";
-import {
-  getProfile,
-  getSessions,
-  getRooms,
-  getQuizResults,
-  type StudySession,
-  type Subject,
-} from "@/lib/store";
+import { type StudySession, type Subject, type RoomData, type QuizResultRecord, type UserProfile } from "@/lib/store";
+import { getProfile, getSessions, getRooms, getQuizResults } from "@/lib/api-client";
+
+const EMPTY_PROFILE: UserProfile = {
+  name: "Student",
+  institution: "",
+  course: "",
+  email: "",
+  subjects: [],
+  avatarInitial: "S",
+};
 
 export function DashboardShell() {
-  const [profile, setProfile] = useState(getProfile());
+  const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [sessions, setSessions] = useState<StudySession[]>([]);
-  const [rooms, setRooms] = useState(getRooms());
+  const [rooms, setRooms] = useState<RoomData[]>([]);
   const [pomodoroOpen, setPomodoroOpen] = useState(false);
   const [targetSubject, setTargetSubject] = useState<Subject>("Physics");
-  const [quizResults, setQuizResults] = useState(getQuizResults());
+  const [quizResults, setQuizResults] = useState<QuizResultRecord[]>([]);
 
   const refreshData = () => {
-    setProfile(getProfile());
-    setSessions(getSessions());
-    setRooms(getRooms());
-    setQuizResults(getQuizResults());
+    getProfile().then((p) => p && setProfile(p));
+    getSessions().then(setSessions);
+    getRooms().then(setRooms);
+    getQuizResults().then(setQuizResults);
   };
 
   useEffect(() => {
     refreshData();
-    window.addEventListener("storage", refreshData);
-    return () => window.removeEventListener("storage", refreshData);
   }, []);
 
   // Calculate today's study minutes

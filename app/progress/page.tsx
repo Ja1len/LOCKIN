@@ -17,20 +17,16 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import {
-  getSessions,
-  getQuizResults,
-  type StudySession,
-  type QuizResultRecord,
-} from "@/lib/store";
+import { type StudySession, type QuizResultRecord } from "@/lib/store";
+import { getSessions, getQuizResults } from "@/lib/api-client";
 
 export default function ProgressPage() {
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [quizResults, setQuizResults] = useState<QuizResultRecord[]>([]);
 
   useEffect(() => {
-    setSessions(getSessions());
-    setQuizResults(getQuizResults());
+    getSessions().then(setSessions);
+    getQuizResults().then(setQuizResults);
   }, []);
 
   // Compute Weekly Study Time (Mon - Sun)

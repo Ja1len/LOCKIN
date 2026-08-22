@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { X, Play, Pause, RotateCcw, Sparkles, CheckCircle2, Coffee, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { addSession, type Subject } from "@/lib/store";
+import { type Subject } from "@/lib/store";
+import { addSession } from "@/lib/api-client";
 
 interface StandalonePomodoroModalProps {
   isOpen: boolean;

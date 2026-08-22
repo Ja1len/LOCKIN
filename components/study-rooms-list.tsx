@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   UsersRound,
@@ -16,10 +17,12 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getRooms, type RoomData, type Subject } from "@/lib/store";
+import { type RoomData, type Subject } from "@/lib/store";
+import { getRooms, createRoom } from "@/lib/api-client";
 
 export function StudyRoomsList() {
-  const [rooms, setRooms] = useState<RoomData[]>(getRooms());
+  const router = useRouter();
+  const [rooms, setRooms] = useState<RoomData[]>([]);
   const [selectedType, setSelectedType] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<string>("All");
@@ -31,6 +34,10 @@ export function StudyRoomsList() {
   const [newTopic, setNewTopic] = useState("");
   const [newType, setNewType] = useState<"Silent Focus" | "Teaching" | "Discussion">("Silent Focus");
 
+  useEffect(() => {
+    getRooms().then(setRooms);
+  }, []);
+
   const filteredRooms = rooms.filter((room) => {
     const matchesType = selectedType === "All" || room.type === selectedType;
     const matchesSubject = selectedSubject === "All" || room.subject === selectedSubject;
@@ -41,43 +48,24 @@ export function StudyRoomsList() {
     return matchesType && matchesSubject && matchesSearch;
   });
 
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName.trim() || !newTopic.trim()) return;
 
-    const id = newRoomName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Date.now().toString().slice(-4);
-    const created: RoomData = {
-      id,
+    const created = await createRoom({
       name: newRoomName.trim(),
       subject: newSubject,
       topic: newTopic.trim(),
       type: newType,
-      participantCount: 1,
-      capacity: 25,
-      accent: newType === "Silent Focus" ? "#2d6a4f" : newType === "Teaching" ? "#486581" : "#b56845",
-      goal: `Study ${newTopic.trim()}`,
-      participants: [
-        { name: "Ailee", initials: "A", role: "Host", online: true, tone: "bg-emerald-100 text-emerald-800", isHost: true },
-      ],
-      initialMessages: [
-        {
-          id: "1",
-          name: "Ailee",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          text: `Welcome to ${newRoomName.trim()}! Let's lock in.`,
-          tone: "bg-emerald-100 text-emerald-800",
-        },
-      ],
-    };
+    });
 
-    const updated = [created, ...rooms];
-    setRooms(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("lockin_rooms_v0", JSON.stringify(updated));
-    }
     setCreateModalOpen(false);
     setNewRoomName("");
     setNewTopic("");
+
+    if (created) {
+      router.push(`/rooms/${created.id}`);
+    }
   };
 
   return (

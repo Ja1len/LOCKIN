@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   Bot,
@@ -20,7 +20,17 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
 import { StandalonePomodoroModal } from "@/components/pomodoro/standalone-pomodoro-modal";
-import { getProfile } from "@/lib/store";
+import { type UserProfile, type Subject } from "@/lib/store";
+import { getCurrentUser, logoutUser } from "@/lib/auth";
+
+const DEFAULT_PROFILE: UserProfile = {
+  name: "Student",
+  institution: "",
+  course: "",
+  email: "",
+  subjects: [] as Subject[],
+  avatarInitial: "S",
+};
 
 interface AppShellProps {
   children: ReactNode;
@@ -29,10 +39,31 @@ interface AppShellProps {
 
 export function AppShell({ children, activeNav }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, setTheme, themes } = useTheme();
   const [pomodoroOpen, setPomodoroOpen] = useState(false);
   const [themeModalOpen, setThemeModalOpen] = useState(false);
-  const profile = getProfile();
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+
+  useEffect(() => {
+    getCurrentUser().then((user) => {
+      if (user) {
+        setProfile({
+          name: user.name,
+          institution: user.institution,
+          course: user.course,
+          email: user.email,
+          subjects: user.subjects,
+          avatarInitial: user.avatarInitial,
+        });
+      }
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    await logoutUser();
+    router.push("/");
+  };
 
   const navigation = [
     { label: "Home", icon: Home, href: "/dashboard", key: "home" },
@@ -154,13 +185,13 @@ export function AppShell({ children, activeNav }: AppShellProps) {
           </div>
 
           <div className="border-t border-[var(--line)] pt-4">
-            <Link
-              href="/"
-              className="flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
+            <button
+              onClick={handleSignOut}
+              className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2 text-sm text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
             >
               <LogOut size={16} />
               Sign Out
-            </Link>
+            </button>
           </div>
         </aside>
 

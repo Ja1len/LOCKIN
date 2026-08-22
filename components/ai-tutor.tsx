@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Bot,
@@ -21,22 +21,29 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import {
-  getDocuments,
-  saveDocument,
-  saveQuizResult,
-  type AIDocument,
-  type QuizQuestion,
-  type QuizResultRecord,
-} from "@/lib/store";
+import { type AIDocument, type QuizResultRecord, type Subject } from "@/lib/store";
+import { getDocuments, uploadDocument, advanceDocument, saveQuizResult } from "@/lib/api-client";
+
+const SUBJECTS: Subject[] = ["Mathematics", "Physics", "Computer Science", "Biology"];
+
+const STEP_LABELS: Record<string, string> = {
+  topics_summary: "Analysing conceptual hierarchy & core formulas",
+  flashcards: "Constructing flashcard deck",
+  questions_1: "Generating high-yield active recall questions",
+  questions_2: "Generating more active recall questions",
+  done: "Finishing up",
+};
 
 export function AITutorShell() {
-  const [documents, setDocuments] = useState<AIDocument[]>(getDocuments());
-  const [selectedDoc, setSelectedDoc] = useState<AIDocument>(documents[0]);
-  const [stage, setStage] = useState<"catalog" | "processing" | "resource">("resource");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [documents, setDocuments] = useState<AIDocument[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<AIDocument | undefined>(undefined);
+  const [stage, setStage] = useState<"empty" | "processing" | "resource">("empty");
   const [activeTab, setActiveTab] = useState<"quiz" | "flashcards" | "summary">("quiz");
-  const [processingStep, setProcessingStep] = useState(0);
   const [uploadedFileName, setUploadedFileName] = useState("");
+  const [uploadSubject, setUploadSubject] = useState<Subject>("Physics");
+  const [uploadError, setUploadError] = useState("");
+  const [processingStepLabel, setProcessingStepLabel] = useState("Uploading document & parsing text structure");
 
   // Quiz State
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -52,20 +59,62 @@ export function AITutorShell() {
   const [knownCards, setKnownCards] = useState<string[]>([]);
   const [reviewCards, setReviewCards] = useState<string[]>([]);
 
-  const handleSimulateUpload = (fileName?: string) => {
-    const name = fileName || "Physics Chapter 4 - Electromagnetic Induction.pdf";
-    setUploadedFileName(name);
-    setStage("processing");
-    setProcessingStep(1);
+  useEffect(() => {
+    getDocuments().then((docs) => {
+      setDocuments(docs);
+      if (docs.length > 0) {
+        setSelectedDoc(docs[0]);
+        setStage("resource");
+      }
+    });
+  }, []);
 
-    setTimeout(() => setProcessingStep(2), 700);
-    setTimeout(() => setProcessingStep(3), 1400);
-    setTimeout(() => setProcessingStep(4), 2100);
-    setTimeout(() => {
-      setStage("resource");
-      setActiveTab("quiz");
-      resetQuiz();
-    }, 2800);
+  const handlePickFile = () => {
+    setUploadError("");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setUploadError("Please upload a PDF file.");
+      return;
+    }
+
+    setUploadedFileName(file.name);
+    setStage("processing");
+    setUploadError("");
+    setProcessingStepLabel("Uploading document & parsing text structure");
+
+    const { document, error } = await uploadDocument(file, uploadSubject);
+
+    if (error || !document) {
+      setUploadError(error || "Upload failed. Please try again.");
+      setStage(documents.length > 0 ? "resource" : "empty");
+      return;
+    }
+
+    let current = document;
+    while (current.status !== "ready") {
+      setProcessingStepLabel(STEP_LABELS[current.generationStep || ""] || "Generating study material");
+      const { document: next, done, error: stepError } = await advanceDocument(current.id);
+      if (stepError || !next) {
+        setUploadError(stepError || "AI generation failed. Please try uploading again.");
+        setStage(documents.length > 0 ? "resource" : "empty");
+        return;
+      }
+      current = next;
+      if (done) break;
+    }
+
+    setDocuments([current]);
+    setSelectedDoc(current);
+    setStage("resource");
+    setActiveTab("quiz");
+    resetQuiz();
   };
 
   const handleSelectDoc = (doc: AIDocument) => {
@@ -91,7 +140,9 @@ export function AITutorShell() {
     setUserAnswers((prev) => ({ ...prev, [currentQIndex]: optionIndex }));
   };
 
-  const handleNextQuestion = () => {
+  const handleNextQuestion = async () => {
+    if (!selectedDoc) return;
+
     if (currentQIndex + 1 < selectedDoc.questions.length) {
       setCurrentQIndex((prev) => prev + 1);
       setSelectedOption(userAnswers[currentQIndex + 1] ?? null);
@@ -113,27 +164,24 @@ export function AITutorShell() {
       });
 
       const percentage = Math.round((correctCount / selectedDoc.questions.length) * 100);
-      const record: QuizResultRecord = {
-        id: "qr-" + Date.now(),
+      const saved = await saveQuizResult({
         documentId: selectedDoc.id,
         documentTitle: selectedDoc.title,
         subject: selectedDoc.subject,
         score: correctCount,
         totalQuestions: selectedDoc.questions.length,
         percentage,
-        date: new Date().toISOString(),
         strongTopics: strong,
         weakTopics: weak,
-      };
+      });
 
-      saveQuizResult(record);
-      setLatestResult(record);
+      setLatestResult(saved);
       setQuizFinished(true);
     }
   };
 
-  const currentQ = selectedDoc.questions[currentQIndex] || selectedDoc.questions[0];
-  const currentCard = selectedDoc.flashcards[cardIndex] || selectedDoc.flashcards[0];
+  const currentQ = selectedDoc?.questions[currentQIndex] || selectedDoc?.questions[0];
+  const currentCard = selectedDoc?.flashcards[cardIndex] || selectedDoc?.flashcards[0];
 
   return (
     <AppShell activeNav="ai-tutor">
@@ -154,18 +202,61 @@ export function AITutorShell() {
           </div>
 
           <div className="flex items-center gap-2">
+            <select
+              value={uploadSubject}
+              onChange={(e) => setUploadSubject(e.target.value as Subject)}
+              className="rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--ink)] outline-none focus:border-emerald-700"
+            >
+              {SUBJECTS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
             <Button
               variant="outline"
-              onClick={() => handleSimulateUpload("Lecture 7 - Advanced Calculus.pdf")}
+              onClick={handlePickFile}
+              disabled={stage === "processing"}
               className="gap-2 rounded-xl"
             >
               <Upload size={15} />
               Upload PDF Notes
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChosen}
+              className="hidden"
+            />
           </div>
         </div>
 
-        {/* Multi-step processing animated screen */}
+        {uploadError && (
+          <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+            <AlertTriangle size={16} className="shrink-0 text-red-600" />
+            <span>{uploadError}</span>
+          </div>
+        )}
+
+        {/* Empty state: no documents yet */}
+        {stage === "empty" && (
+          <div className="rounded-3xl border border-dashed border-[var(--line)] bg-[var(--card)] p-12 text-center">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              <FileText size={28} />
+            </div>
+            <h2 className="mt-5 text-xl font-bold text-[var(--ink)]">No study material yet</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Upload a PDF of your lecture notes to generate a quiz, flashcards, and a summary.
+            </p>
+            <Button onClick={handlePickFile} className="mt-5 gap-2 rounded-xl">
+              <Upload size={15} />
+              Upload PDF Notes
+            </Button>
+          </div>
+        )}
+
+        {/* Processing screen */}
         {stage === "processing" && (
           <div className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-10 text-center shadow-sm">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
@@ -174,60 +265,12 @@ export function AITutorShell() {
             <h2 className="mt-5 text-xl font-bold text-[var(--ink)]">
               Processing &ldquo;{uploadedFileName}&rdquo;
             </h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Transforming lecture material into pedagogical active recall resources...
-            </p>
-
-            <div className="mx-auto mt-8 max-w-sm space-y-3 text-left">
-              <div
-                className={`flex items-center gap-3 rounded-xl p-3 text-xs font-semibold transition ${
-                  processingStep >= 1
-                    ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
-                    : "text-zinc-400"
-                }`}
-              >
-                <CheckCircle2 size={16} className={processingStep >= 1 ? "text-emerald-600" : "text-zinc-300"} />
-                <span>Uploading document &amp; parsing text structure</span>
-              </div>
-
-              <div
-                className={`flex items-center gap-3 rounded-xl p-3 text-xs font-semibold transition ${
-                  processingStep >= 2
-                    ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
-                    : "text-zinc-400"
-                }`}
-              >
-                <CheckCircle2 size={16} className={processingStep >= 2 ? "text-emerald-600" : "text-zinc-300"} />
-                <span>Analysing conceptual hierarchy &amp; core formulas</span>
-              </div>
-
-              <div
-                className={`flex items-center gap-3 rounded-xl p-3 text-xs font-semibold transition ${
-                  processingStep >= 3
-                    ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
-                    : "text-zinc-400"
-                }`}
-              >
-                <CheckCircle2 size={16} className={processingStep >= 3 ? "text-emerald-600" : "text-zinc-300"} />
-                <span>Generating high-yield active recall questions</span>
-              </div>
-
-              <div
-                className={`flex items-center gap-3 rounded-xl p-3 text-xs font-semibold transition ${
-                  processingStep >= 4
-                    ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
-                    : "text-zinc-400"
-                }`}
-              >
-                <CheckCircle2 size={16} className={processingStep >= 4 ? "text-emerald-600" : "text-zinc-300"} />
-                <span>Constructing flashcard deck and executive summary</span>
-              </div>
-            </div>
+            <p className="mt-1 text-sm text-[var(--muted)]">{processingStepLabel}&hellip;</p>
           </div>
         )}
 
         {/* Main Resource Workspace */}
-        {stage === "resource" && (
+        {stage === "resource" && selectedDoc && currentQ && currentCard && (
           <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
             {/* Left Content Column */}
             <div className="space-y-6">
@@ -651,25 +694,27 @@ export function AITutorShell() {
                   </div>
 
                   {/* Formulas */}
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
-                      Essential Formulas &amp; Laws
-                    </h4>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {selectedDoc.summary.formulas.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-xs"
-                        >
-                          <p className="text-xs font-semibold text-[var(--muted)]">{item.name}</p>
-                          <p className="mt-1.5 font-mono text-base font-bold text-emerald-800 dark:text-emerald-300">
-                            {item.formula}
-                          </p>
-                          <p className="mt-1 text-[11px] text-zinc-400">{item.note}</p>
-                        </div>
-                      ))}
+                  {selectedDoc.summary.formulas.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                        Essential Formulas &amp; Laws
+                      </h4>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {selectedDoc.summary.formulas.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-xs"
+                          >
+                            <p className="text-xs font-semibold text-[var(--muted)]">{item.name}</p>
+                            <p className="mt-1.5 font-mono text-base font-bold text-emerald-800 dark:text-emerald-300">
+                              {item.formula}
+                            </p>
+                            <p className="mt-1 text-[11px] text-zinc-400">{item.note}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Takeaways */}
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/30">
@@ -697,7 +742,7 @@ export function AITutorShell() {
 
                 <div className="mt-3 space-y-2">
                   {documents.map((doc) => {
-                    const isSelected = selectedDoc.id === doc.id;
+                    const isSelected = selectedDoc?.id === doc.id;
                     return (
                       <button
                         key={doc.id}
@@ -721,10 +766,13 @@ export function AITutorShell() {
                 </div>
 
                 <div className="mt-4 border-t border-[var(--line)] pt-3">
+                  <p className="mb-2 text-[10px] text-[var(--muted)]">
+                    Uploading a new PDF replaces your current one.
+                  </p>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSimulateUpload("New Chemistry Notes.pdf")}
+                    onClick={handlePickFile}
                     className="w-full gap-1.5 rounded-xl text-xs"
                   >
                     <Upload size={13} />
