@@ -272,7 +272,7 @@ function AuthView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form states
-  const [email, setEmail] = useState("ailee@sunway.edu.my");
+  const [email, setEmail] = useState("ailee@moe-dl.edu.my");
   const [password, setPassword] = useState("lockin123");
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("Sunway University");
@@ -315,7 +315,7 @@ function AuthView({
   };
 
   const handleQuickDemoLogin = async () => {
-    const result = await loginUser({ email: "ailee@sunway.edu.my", password: "lockin123" });
+    const result = await loginUser({ email: "ailee@moe-dl.edu.my", password: "lockin123" });
     if (result.success) {
       onSuccess();
     }
@@ -512,7 +512,7 @@ function AuthView({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="sarah@sunway.edu.my"
+                    placeholder="sarah@moe-dl.edu.my"
                     className="rounded-xl text-sm"
                     required
                   />
