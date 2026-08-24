@@ -8,6 +8,7 @@ import type {
   QuizResultRecord,
   ThemeMode,
   Subject,
+  Todo,
 } from "./store";
 
 async function json<T>(res: Response): Promise<T> {
@@ -28,6 +29,7 @@ export async function getProfile(): Promise<UserProfile | null> {
     email: profile.email,
     subjects: profile.subjects,
     avatarInitial: profile.avatarInitial,
+    dailyGoalMinutes: profile.dailyGoalMinutes,
   };
 }
 
@@ -36,6 +38,7 @@ export async function saveProfile(updates: {
   institution?: string;
   course?: string;
   subjects?: Subject[];
+  dailyGoalMinutes?: number;
 }): Promise<UserProfile | null> {
   const res = await fetch("/api/profile", {
     method: "PATCH",
@@ -52,6 +55,7 @@ export async function saveProfile(updates: {
         email: profile.email,
         subjects: profile.subjects,
         avatarInitial: profile.avatarInitial,
+        dailyGoalMinutes: profile.dailyGoalMinutes,
       }
     : null;
 }
@@ -274,5 +278,42 @@ export async function saveQuizResult(
         strongTopics: saved.strongTopics ?? [],
         weakTopics: saved.weakTopics ?? [],
       }
+    : null;
+}
+
+// ---- Todos ----
+
+export async function getTodos(): Promise<Todo[]> {
+  const res = await fetch("/api/todos");
+  if (!res.ok) return [];
+  const { todos } = await json<{ todos: any[] }>(res);
+  return todos.map((t) => ({
+    id: t.id,
+    title: t.title,
+    completed: t.completed,
+    createdAt: t.createdAt,
+    completedAt: t.completedAt ?? undefined,
+  }));
+}
+
+export async function addTodo(title: string): Promise<Todo | null> {
+  const res = await fetch("/api/todos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) return null;
+  const { todo } = await json<{ todo: any }>(res);
+  return todo
+    ? { id: todo.id, title: todo.title, completed: todo.completed, createdAt: todo.createdAt, completedAt: todo.completedAt ?? undefined }
+    : null;
+}
+
+export async function completeTodo(id: string): Promise<Todo | null> {
+  const res = await fetch(`/api/todos/${id}`, { method: "PATCH" });
+  if (!res.ok) return null;
+  const { todo } = await json<{ todo: any }>(res);
+  return todo
+    ? { id: todo.id, title: todo.title, completed: todo.completed, createdAt: todo.createdAt, completedAt: todo.completedAt ?? undefined }
     : null;
 }

@@ -11,6 +11,7 @@ const patchSchema = z.object({
   course: z.string().trim().optional(),
   subjects: z.array(z.string()).optional(),
   theme: z.enum(["clean", "focus", "energy"]).optional(),
+  dailyGoalMinutes: z.number().int().min(5).max(720).optional(),
 });
 
 export async function GET() {

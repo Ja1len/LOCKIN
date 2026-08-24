@@ -1,35 +1,46 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Play, Pause, RotateCcw, Sparkles, CheckCircle2, Coffee, Flame } from "lucide-react";
+import { X, Play, Pause, RotateCcw, Sparkles, CheckCircle2, Coffee, Flame, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type Subject } from "@/lib/store";
 import { addSession } from "@/lib/api-client";
+import { useSubjects } from "@/lib/use-subjects";
+import { DigitTimePicker } from "@/components/pomodoro/digit-time-picker";
 
 interface StandalonePomodoroModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultSubject?: Subject;
+  subjects: Subject[];
+  onSubjectsChange: (subjects: Subject[]) => void;
   onSessionComplete?: (subject: Subject, duration: number) => void;
 }
 
-const subjects: Subject[] = ["Mathematics", "Physics", "Computer Science", "Biology"];
+const BREAK_MINUTES = 5;
+const DEFAULT_FOCUS_MINUTES = 25;
 
 export function StandalonePomodoroModal({
   isOpen,
   onClose,
-  defaultSubject = "Physics",
+  defaultSubject,
+  subjects: subjectsProp,
+  onSubjectsChange,
   onSessionComplete,
 }: StandalonePomodoroModalProps) {
+  const { subjects, addSubject, removeSubject } = useSubjects(subjectsProp, onSubjectsChange);
+  const [newSubjectInput, setNewSubjectInput] = useState("");
   const [mode, setMode] = useState<"focus" | "break">("focus");
-  const [subject, setSubject] = useState<Subject>(defaultSubject);
-  const [seconds, setSeconds] = useState(25 * 60);
+  const [subject, setSubject] = useState<Subject | undefined>(defaultSubject);
+  const [focusMinutes, setFocusMinutes] = useState(DEFAULT_FOCUS_MINUTES);
+  const [seconds, setSeconds] = useState(DEFAULT_FOCUS_MINUTES * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
-    setSubject(defaultSubject);
-  }, [defaultSubject]);
+    if (defaultSubject) setSubject(defaultSubject);
+    else if (!subject && subjects.length > 0) setSubject(subjects[0]);
+  }, [defaultSubject, subjects, subject]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -49,12 +60,12 @@ export function StandalonePomodoroModal({
     if (seconds === 0 && !isCompleted) {
       setIsCompleted(true);
       setIsRunning(false);
-      if (mode === "focus") {
-        addSession(subject, 25);
-        if (onSessionComplete) onSessionComplete(subject, 25);
+      if (mode === "focus" && subject) {
+        addSession(subject, focusMinutes);
+        if (onSessionComplete) onSessionComplete(subject, focusMinutes);
       }
     }
-  }, [seconds, isCompleted, mode, subject, onSessionComplete]);
+  }, [seconds, isCompleted, mode, subject, focusMinutes, onSessionComplete]);
 
   if (!isOpen) return null;
 
@@ -70,25 +81,35 @@ export function StandalonePomodoroModal({
   const handleReset = () => {
     setIsRunning(false);
     setIsCompleted(false);
-    setSeconds(mode === "focus" ? 25 * 60 : 5 * 60);
+    setSeconds(mode === "focus" ? focusMinutes * 60 : BREAK_MINUTES * 60);
   };
 
   const switchMode = (newMode: "focus" | "break") => {
     setMode(newMode);
     setIsRunning(false);
     setIsCompleted(false);
-    setSeconds(newMode === "focus" ? 25 * 60 : 5 * 60);
+    setSeconds(newMode === "focus" ? focusMinutes * 60 : BREAK_MINUTES * 60);
+  };
+
+  const handleFocusMinutesChange = (value: number) => {
+    setFocusMinutes(value);
+    if (mode === "focus" && !isRunning) setSeconds(value * 60);
+  };
+
+  const handleAddSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    addSubject(newSubjectInput);
+    setNewSubjectInput("");
   };
 
   const minutesStr = String(Math.floor(seconds / 60)).padStart(2, "0");
   const secondsStr = String(seconds % 60).padStart(2, "0");
-  const progressPercent = mode === "focus" 
-    ? Math.round(((25 * 60 - seconds) / (25 * 60)) * 100)
-    : Math.round(((5 * 60 - seconds) / (5 * 60)) * 100);
+  const totalSeconds = mode === "focus" ? focusMinutes * 60 : BREAK_MINUTES * 60;
+  const progressPercent = totalSeconds > 0 ? Math.round(((totalSeconds - seconds) / totalSeconds) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-[#18221b] sm:p-8">
+      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-[#18221b] sm:p-8 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -117,7 +138,7 @@ export function StandalonePomodoroModal({
             }`}
           >
             <Flame size={15} />
-            Focus (25m)
+            Focus ({focusMinutes}m)
           </button>
           <button
             onClick={() => switchMode("break")}
@@ -128,31 +149,72 @@ export function StandalonePomodoroModal({
             }`}
           >
             <Coffee size={15} />
-            Break (5m)
+            Break ({BREAK_MINUTES}m)
           </button>
         </div>
 
-        {/* Subject Selection for Focus Mode */}
+        {/* Focus mode: duration picker + subject chips */}
         {mode === "focus" && (
-          <div className="mt-4">
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-              Focus Subject:
-            </label>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {subjects.map((s) => (
-                <button
-                  key={s}
-                  disabled={isRunning}
-                  onClick={() => setSubject(s)}
-                  className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                    subject === s
-                      ? "border-emerald-700 bg-emerald-50 text-emerald-900 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200"
-                      : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 dark:border-zinc-700/60 dark:bg-zinc-800/40 dark:text-zinc-300"
-                  } ${isRunning ? "opacity-60 cursor-not-allowed" : ""}`}
-                >
-                  {s}
-                </button>
-              ))}
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                Focus Duration
+              </label>
+              <div className="mt-2">
+                <DigitTimePicker value={focusMinutes} onChange={handleFocusMinutesChange} disabled={isRunning} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                Focus Subject
+              </label>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {subjects.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={isRunning}
+                    onClick={() => setSubject(s)}
+                    className={`group inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                      subject === s
+                        ? "border-emerald-700 bg-emerald-50 text-emerald-900 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200"
+                        : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 dark:border-zinc-700/60 dark:bg-zinc-800/40 dark:text-zinc-300"
+                    } ${isRunning ? "opacity-60" : ""}`}
+                  >
+                    {s}
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isRunning) removeSubject(s);
+                      }}
+                      className="text-current opacity-50 hover:opacity-100"
+                      aria-label={`Remove ${s}`}
+                    >
+                      <Trash2 size={11} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {!isRunning && (
+                <form onSubmit={handleAddSubject} className="mt-2 flex gap-1.5">
+                  <input
+                    value={newSubjectInput}
+                    onChange={(e) => setNewSubjectInput(e.target.value)}
+                    placeholder="Add a subject"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs outline-none focus:border-emerald-700 dark:border-zinc-700/60 dark:bg-zinc-800/40"
+                  />
+                  <button
+                    type="submit"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-800 text-white hover:bg-emerald-900"
+                    aria-label="Add subject"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         )}
@@ -169,7 +231,7 @@ export function StandalonePomodoroModal({
                   ? "Block complete! 🎉"
                   : isRunning
                   ? mode === "focus"
-                    ? `Locking in • ${subject}`
+                    ? `Locking in${subject ? ` • ${subject}` : ""}`
                     : "Recharge time"
                   : "Ready to start"}
               </p>
@@ -198,7 +260,7 @@ export function StandalonePomodoroModal({
             <div>
               <p className="font-semibold">Session recorded!</p>
               <p className="text-xs text-emerald-700/80 dark:text-emerald-300/70">
-                25 minutes of {subject} added to your daily progress.
+                {focusMinutes} minutes of {subject} added to your daily progress.
               </p>
             </div>
           </div>
@@ -208,6 +270,7 @@ export function StandalonePomodoroModal({
         <div className="flex items-center justify-center gap-3">
           <Button
             size="lg"
+            disabled={mode === "focus" && !subject}
             className="flex-1 gap-2 rounded-xl text-base font-semibold"
             onClick={handleStartPause}
           >

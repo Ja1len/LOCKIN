@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
+  Check,
   Flame,
   History,
   Play,
   Plus,
+  Settings2,
   Sparkles,
   Target,
   Upload,
@@ -21,9 +23,12 @@ import { DashboardCard } from "@/components/dashboard-card";
 import { ProgressBar } from "@/components/progress-bar";
 import { RoomCard } from "@/components/room-card";
 import { Button } from "@/components/ui/button";
+import { TodoList } from "@/components/todo-list";
 import { StandalonePomodoroModal } from "@/components/pomodoro/standalone-pomodoro-modal";
-import { type StudySession, type Subject, type RoomData, type QuizResultRecord, type UserProfile } from "@/lib/store";
-import { getProfile, getSessions, getRooms, getQuizResults } from "@/lib/api-client";
+import { type StudySession, type Subject, type RoomData, type QuizResultRecord, type UserProfile, type Todo } from "@/lib/store";
+import { getProfile, getSessions, getRooms, getQuizResults, getTodos, saveProfile } from "@/lib/api-client";
+import { calculateStudyStreak } from "@/lib/streak";
+import { getTodaySessions, getTodayStudyMinutes, getDailyGoal, getGoalProgress, getSubjectStudyMinutes } from "@/lib/study-stats";
 
 const EMPTY_PROFILE: UserProfile = {
   name: "Student",
@@ -34,55 +39,53 @@ const EMPTY_PROFILE: UserProfile = {
   avatarInitial: "S",
 };
 
+const GOAL_PRESETS = [30, 60, 90, 120, 180];
+
 export function DashboardShell() {
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [rooms, setRooms] = useState<RoomData[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [pomodoroOpen, setPomodoroOpen] = useState(false);
   const [targetSubject, setTargetSubject] = useState<Subject>("Physics");
   const [quizResults, setQuizResults] = useState<QuizResultRecord[]>([]);
+  const [goalEditorOpen, setGoalEditorOpen] = useState(false);
+  const [customGoalInput, setCustomGoalInput] = useState("");
 
   const refreshData = () => {
     getProfile().then((p) => p && setProfile(p));
     getSessions().then(setSessions);
     getRooms().then(setRooms);
     getQuizResults().then(setQuizResults);
+    getTodos().then(setTodos);
   };
 
   useEffect(() => {
     refreshData();
   }, []);
 
-  // Calculate today's study minutes
-  const todayStr = new Date().toDateString();
-  const todaySessions = sessions.filter(
-    (s) => new Date(s.date).toDateString() === todayStr
-  );
-  
-  // Calculate breakdown by subject for today (with default base for realistic demo)
-  const mathMinutes = todaySessions
-    .filter((s) => s.subject === "Mathematics")
-    .reduce((acc, s) => acc + s.duration, 45);
-  const csMinutes = todaySessions
-    .filter((s) => s.subject === "Computer Science")
-    .reduce((acc, s) => acc + s.duration, 25);
-  const physicsMinutes = todaySessions
-    .filter((s) => s.subject === "Physics")
-    .reduce((acc, s) => acc + s.duration, 10);
-  const biologyMinutes = todaySessions
-    .filter((s) => s.subject === "Biology")
-    .reduce((acc, s) => acc + s.duration, 0);
+  const todaySessions = getTodaySessions(sessions);
+  const totalTodayMinutes = getTodayStudyMinutes(sessions);
+  const subjectMinutes = getSubjectStudyMinutes(todaySessions);
+  const dailyGoal = getDailyGoal(profile);
+  const goalProgress = getGoalProgress(totalTodayMinutes, dailyGoal);
+  const streak = calculateStudyStreak(sessions);
 
-  const totalTodayMinutes = mathMinutes + csMinutes + physicsMinutes + biologyMinutes;
-  const targetMinutes = 120; // 2 hours
   const hours = Math.floor(totalTodayMinutes / 60);
   const minutes = totalTodayMinutes % 60;
-  const progressPercent = Math.min(100, Math.round((totalTodayMinutes / targetMinutes) * 100));
+  const goalHoursLabel = dailyGoal % 60 === 0 ? `${dailyGoal / 60}h` : `${Math.floor(dailyGoal / 60)}h ${dailyGoal % 60}m`;
 
   // Determine weak topic recommendation from quiz results
   const latestResultWithWeakness = quizResults.find((r) => r.weakTopics && r.weakTopics.length > 0);
   const weakTopic = latestResultWithWeakness?.weakTopics[0] || "Electromagnetic Induction";
   const weakSubject = latestResultWithWeakness?.subject || "Physics";
+
+  const handleSetGoal = async (value: number) => {
+    setGoalEditorOpen(false);
+    setCustomGoalInput("");
+    setProfile((p) => ({ ...p, dailyGoalMinutes: value }));
+    await saveProfile({ dailyGoalMinutes: value });
+  };
 
   return (
     <AppShell activeNav="home">
@@ -104,7 +107,7 @@ export function DashboardShell() {
           <div className="flex items-center gap-2">
             <Button
               onClick={() => {
-                setTargetSubject("Physics");
+                setTargetSubject(profile.subjects[0] || "Physics");
                 setPomodoroOpen(true);
               }}
               className="gap-2 shadow-sm rounded-xl"
@@ -128,7 +131,7 @@ export function DashboardShell() {
                 Study streak
               </h2>
               <p className="mt-1 text-sm text-emerald-100/70">
-                You&apos;re building a great rhythm.
+                {streak.current > 0 ? "You're building a great rhythm." : "Complete a focus block to start your streak."}
               </p>
             </div>
             <div className="mt-6 flex items-end justify-between">
@@ -137,7 +140,7 @@ export function DashboardShell() {
                   <Flame size={24} className="fill-[#bfe3cf]" />
                 </span>
                 <div>
-                  <p className="text-4xl font-extrabold tracking-tight">5</p>
+                  <p className="text-4xl font-extrabold tracking-tight">{streak.current}</p>
                   <p className="text-xs font-medium text-emerald-200/80 uppercase tracking-wider">
                     Days Active
                   </p>
@@ -145,7 +148,7 @@ export function DashboardShell() {
               </div>
               <div className="text-right">
                 <span className="text-xs text-emerald-200/60 block">All-time best</span>
-                <span className="text-sm font-semibold text-emerald-100">12 days</span>
+                <span className="text-sm font-semibold text-emerald-100">{streak.best} days</span>
               </div>
             </div>
           </DashboardCard>
@@ -154,67 +157,103 @@ export function DashboardShell() {
           <DashboardCard
             title="Today's goal"
             description="Set a clear finish line for your day."
+            action={
+              <button
+                onClick={() => setGoalEditorOpen((v) => !v)}
+                aria-label="Edit daily goal"
+                className="grid h-7 w-7 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+              >
+                <Settings2 size={14} />
+              </button>
+            }
           >
             <div className="flex items-center gap-3.5">
               <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                <Target size={22} />
+                {goalProgress.completed ? <Check size={22} /> : <Target size={22} />}
               </span>
               <div>
                 <p className="font-semibold text-zinc-900 dark:text-white">
-                  Complete 2 focus blocks
+                  {goalHoursLabel} daily goal
                 </p>
                 <p className="text-sm text-[var(--muted)]">
-                  {totalTodayMinutes >= 50 ? "2 of 2 completed 🎉" : "1 of 2 completed"}
+                  {goalProgress.completed
+                    ? "✓ Completed"
+                    : `${Math.floor(goalProgress.remaining / 60)}h ${goalProgress.remaining % 60}m remaining`}
                 </p>
               </div>
             </div>
-            <ProgressBar
-              value={totalTodayMinutes >= 50 ? 100 : 50}
-              className="mt-5"
-            />
-            <div className="mt-4 flex items-center justify-between text-xs text-[var(--muted)]">
-              <span>Block 1: Calculus (45m) ✓</span>
-              <span>Block 2: Physics (25m)</span>
-            </div>
+            <ProgressBar value={goalProgress.cappedPercent} className="mt-5" />
+
+            {goalEditorOpen && (
+              <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--paper)] p-3 space-y-2.5">
+                <div className="flex flex-wrap gap-1.5">
+                  {GOAL_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => handleSetGoal(preset)}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                        dailyGoal === preset
+                          ? "bg-emerald-800 text-white"
+                          : "bg-white text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-300"
+                      }`}
+                    >
+                      {preset >= 60 ? `${preset / 60}h` : `${preset}m`}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={5}
+                    max={720}
+                    value={customGoalInput}
+                    onChange={(e) => setCustomGoalInput(e.target.value)}
+                    placeholder="Custom minutes"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-white px-2 text-xs outline-none dark:bg-zinc-800"
+                  />
+                  <button
+                    onClick={() => {
+                      const val = parseInt(customGoalInput, 10);
+                      if (val >= 5 && val <= 720) handleSetGoal(val);
+                    }}
+                    className="rounded-lg bg-emerald-800 px-3 text-xs font-semibold text-white"
+                  >
+                    Set
+                  </button>
+                </div>
+              </div>
+            )}
           </DashboardCard>
 
           {/* Today's Study Progress */}
           <DashboardCard
             title="Today's study progress"
-            description={`You're ${progressPercent}% of the way to your daily 2h goal.`}
+            description={`You're ${goalProgress.percent}% of the way to your daily ${goalHoursLabel} goal.`}
           >
             <div className="flex items-end justify-between gap-4">
               <p className="text-3xl font-bold tracking-tight">
                 {hours}h {minutes}m{" "}
-                <span className="text-sm font-normal text-[var(--muted)]">of 2h</span>
+                <span className="text-sm font-normal text-[var(--muted)]">of {goalHoursLabel}</span>
               </p>
               <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                {Math.max(0, targetMinutes - totalTodayMinutes)} min left
+                {goalProgress.completed ? "Goal met 🎉" : `${goalProgress.remaining} min left`}
               </span>
             </div>
-            <ProgressBar value={progressPercent} className="mt-4" />
+            <ProgressBar value={goalProgress.cappedPercent} className="mt-4" />
             <div className="mt-4 space-y-2 border-t border-[var(--line)] pt-3 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-600" />
-                  Mathematics
-                </span>
-                <span className="font-medium text-[var(--muted)]">{mathMinutes} min</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                  <span className="h-2 w-2 rounded-full bg-sky-600" />
-                  Physics
-                </span>
-                <span className="font-medium text-[var(--muted)]">{physicsMinutes} min</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                  <span className="h-2 w-2 rounded-full bg-amber-600" />
-                  Computer Science
-                </span>
-                <span className="font-medium text-[var(--muted)]">{csMinutes} min</span>
-              </div>
+              {profile.subjects.length === 0 ? (
+                <p className="text-[var(--muted)]">Add subjects on your profile to see a breakdown here.</p>
+              ) : (
+                profile.subjects.map((subject) => (
+                  <div key={subject} className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                      <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                      {subject}
+                    </span>
+                    <span className="font-medium text-[var(--muted)]">{subjectMinutes[subject] ?? 0} min</span>
+                  </div>
+                ))
+              )}
             </div>
           </DashboardCard>
         </div>
@@ -250,8 +289,10 @@ export function DashboardShell() {
           </div>
         </DashboardCard>
 
-        {/* AI Recommendation & Quick Actions */}
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        {/* To-Do + AI Recommendation */}
+        <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+          <TodoList todos={todos} onChange={setTodos} />
+
           {/* AI Study Coach Recommendation */}
           <DashboardCard
             title="AI study coach"
@@ -284,61 +325,61 @@ export function DashboardShell() {
               </div>
             </div>
           </DashboardCard>
+        </div>
 
-          {/* Quick Actions */}
-          <DashboardCard
-            title="Quick actions"
-            description="Jump straight into what you need."
-          >
-            <div className="grid gap-2.5">
-              <Link href="/rooms/physics-focus" className="w-full">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
-                >
-                  <History size={16} className="text-emerald-700" />
-                  <span className="font-medium text-xs sm:text-sm">Continue Previous Session</span>
-                  <Plus className="ml-auto text-zinc-400" size={15} />
-                </Button>
-              </Link>
-              
-              <Link href="/rooms" className="w-full">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
-                >
-                  <UsersRound size={16} className="text-emerald-700" />
-                  <span className="font-medium text-xs sm:text-sm">Join Study Room</span>
-                  <Plus className="ml-auto text-zinc-400" size={15} />
-                </Button>
-              </Link>
-
+        {/* Quick Actions */}
+        <DashboardCard
+          title="Quick actions"
+          description="Jump straight into what you need."
+        >
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Link href="/rooms" className="w-full">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setTargetSubject("Mathematics");
-                  setPomodoroOpen(true);
-                }}
                 className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
               >
-                <Play size={16} className="text-emerald-700" />
-                <span className="font-medium text-xs sm:text-sm">Start Standalone Pomodoro</span>
+                <UsersRound size={16} className="text-emerald-700" />
+                <span className="font-medium text-xs sm:text-sm">Join Study Room</span>
                 <Plus className="ml-auto text-zinc-400" size={15} />
               </Button>
+            </Link>
 
-              <Link href="/ai-tutor" className="w-full">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
-                >
-                  <Upload size={16} className="text-emerald-700" />
-                  <span className="font-medium text-xs sm:text-sm">Upload Notes to AI Tutor</span>
-                  <Plus className="ml-auto text-zinc-400" size={15} />
-                </Button>
-              </Link>
-            </div>
-          </DashboardCard>
-        </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTargetSubject(profile.subjects[0] || "Mathematics");
+                setPomodoroOpen(true);
+              }}
+              className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
+            >
+              <Play size={16} className="text-emerald-700" />
+              <span className="font-medium text-xs sm:text-sm">Start Standalone Pomodoro</span>
+              <Plus className="ml-auto text-zinc-400" size={15} />
+            </Button>
+
+            <Link href="/ai-tutor" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
+              >
+                <Upload size={16} className="text-emerald-700" />
+                <span className="font-medium text-xs sm:text-sm">Upload Notes to AI Tutor</span>
+                <Plus className="ml-auto text-zinc-400" size={15} />
+              </Button>
+            </Link>
+
+            <Link href="/progress" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3 rounded-xl border-[var(--line)] bg-[var(--card)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-left"
+              >
+                <History size={16} className="text-emerald-700" />
+                <span className="font-medium text-xs sm:text-sm">View Progress</span>
+                <Plus className="ml-auto text-zinc-400" size={15} />
+              </Button>
+            </Link>
+          </div>
+        </DashboardCard>
       </div>
 
       <StandalonePomodoroModal
@@ -348,6 +389,11 @@ export function DashboardShell() {
           refreshData();
         }}
         defaultSubject={targetSubject}
+        subjects={profile.subjects}
+        onSubjectsChange={(subjects) => {
+          setProfile((p) => ({ ...p, subjects }));
+          saveProfile({ subjects });
+        }}
         onSessionComplete={() => refreshData()}
       />
     </AppShell>

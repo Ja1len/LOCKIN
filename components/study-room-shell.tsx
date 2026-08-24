@@ -12,11 +12,12 @@ import { StudyRoomHeader } from "@/components/study-room/study-room-header";
 import { TeachingCanvas } from "@/components/study-room/teaching-canvas";
 import { DiscussionBoard } from "@/components/study-room/discussion-board";
 import { type RoomData, type Subject } from "@/lib/store";
-import { getRoomById, addSession } from "@/lib/api-client";
+import { getRoomById, addSession, getProfile } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }) {
   const [room, setRoom] = useState<RoomData | undefined>(undefined);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [running, setRunning] = useState(true);
   const [resetKey, setResetKey] = useState(0);
   const [focusMode, setFocusMode] = useState(false);
@@ -24,6 +25,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
 
   useEffect(() => {
     getRoomById(roomId).then(setRoom);
+    getProfile().then((p) => p && setSubjects(p.subjects));
   }, [roomId]);
 
   const activeRoom = room || {
@@ -128,6 +130,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
                     resetKey={resetKey}
                     onComplete={handleSessionComplete}
                     defaultSubject={activeRoom.subject}
+                    subjects={subjects}
                     roomType={activeRoom.type}
                   />
                   <RoomGoalCard
@@ -157,6 +160,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
                       resetKey={resetKey}
                       onComplete={handleSessionComplete}
                       defaultSubject={activeRoom.subject}
+                      subjects={subjects}
                       roomType={activeRoom.type}
                     />
                     <RoomGoalCard
@@ -189,6 +193,7 @@ export function StudyRoomShell({ roomId = "physics-focus" }: { roomId?: string }
                       resetKey={resetKey}
                       onComplete={handleSessionComplete}
                       defaultSubject={activeRoom.subject}
+                      subjects={subjects}
                       roomType={activeRoom.type}
                     />
                     <RoomGoalCard

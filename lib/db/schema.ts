@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   subjects: text("subjects").array().notNull().default([]),
   avatarInitial: text("avatar_initial").notNull(),
   theme: text("theme").notNull().default("clean"),
+  dailyGoalMinutes: integer("daily_goal_minutes").notNull().default(120),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
@@ -99,6 +100,15 @@ export const aiDocuments = pgTable("ai_documents", {
   extractedText: text("extracted_text"),
   errorMessage: text("error_message"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const todos = pgTable("todos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
 export const quizResults = pgTable("quiz_results", {

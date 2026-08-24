@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
   BookOpen,
@@ -108,6 +109,15 @@ function Landing({
 }) {
   const router = useRouter();
 
+  const heroContainer = {
+    hidden: {},
+    visible: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
+  };
+  const heroItem = {
+    hidden: { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+  };
+
   return (
     <div className="min-h-screen overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
       {/* Streamlined Header: single contextual action button */}
@@ -139,23 +149,34 @@ function Landing({
       {/* Hero Section */}
       <main className="mx-auto max-w-6xl px-5 pb-16 pt-10 md:px-10 md:pt-16">
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-900/15 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <motion.section
+            className="space-y-6"
+            initial="hidden"
+            animate="visible"
+            variants={heroContainer}
+          >
+            <motion.div
+              variants={heroItem}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-900/15 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+            >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-700 animate-pulse" />
               The Student Productivity Platform
-            </div>
+            </motion.div>
 
-            <h1 className="max-w-xl text-5xl font-extrabold leading-[1.02] tracking-tight text-zinc-900 md:text-7xl">
+            <motion.h1
+              variants={heroItem}
+              className="max-w-xl text-5xl font-extrabold leading-[1.02] tracking-tight text-zinc-900 md:text-7xl"
+            >
               Study together. <br />
               <span className="text-emerald-800">Lock in with intention.</span>
-            </h1>
+            </motion.h1>
 
-            <p className="max-w-lg text-base leading-relaxed text-zinc-600 sm:text-lg">
+            <motion.p variants={heroItem} className="max-w-lg text-base leading-relaxed text-zinc-600 sm:text-lg">
               LOCKIN is a calm, collaborative digital workspace for college students. Combine peer accountability rooms, structured Pomodoro focus, and AI-powered active recall quizzes.
-            </p>
+            </motion.p>
 
             {/* Single Primary Call-to-Action */}
-            <div className="pt-2">
+            <motion.div variants={heroItem} className="pt-2">
               {currentUser ? (
                 <Button
                   id="hero-enter-btn"
@@ -175,9 +196,9 @@ function Landing({
                   Lock In Now <ArrowRight size={18} />
                 </Button>
               )}
-            </div>
+            </motion.div>
 
-            <div className="flex items-center gap-6 pt-4 text-xs text-zinc-500">
+            <motion.div variants={heroItem} className="flex items-center gap-6 pt-4 text-xs text-zinc-500">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={16} className="text-emerald-700" /> Free for students
               </span>
@@ -187,11 +208,17 @@ function Landing({
               <span className="flex items-center gap-1.5">
                 <Timer size={16} className="text-emerald-700" /> Built-in Pomodoro
               </span>
-            </div>
-          </section>
+            </motion.div>
+          </motion.section>
 
           {/* Right Hero Visual Card */}
-          <section className="relative">
+          <motion.section
+            className="relative"
+            initial={{ opacity: 0, y: 24, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}
+            whileHover={{ y: -6, scale: 1.015 }}
+          >
             <div className="grain absolute -inset-6 -z-0 rounded-[3rem] bg-emerald-100/60" />
             <div className="relative rounded-3xl border border-emerald-900/10 bg-[#1b2920] p-6 shadow-2xl shadow-emerald-950/20 text-white sm:p-8 space-y-6">
               <div className="flex items-center justify-between">
@@ -230,7 +257,7 @@ function Landing({
                 <div className="h-2 w-1/3 rounded-full bg-white/20" />
               </div>
             </div>
-          </section>
+          </motion.section>
         </div>
 
         {/* 3 Core Value Pillars */}
@@ -239,16 +266,19 @@ function Landing({
             icon={<UsersRound size={20} />}
             title="Collaborative Accountability"
             text="Choose between Silent Focus, Peer Teaching, and Group Discussion rooms to match your study mode."
+            delay={0}
           />
           <Value
             icon={<Brain size={20} />}
             title="Active Recall AI Tutor"
             text="Upload lecture notes to generate instant multi-question quizzes, smart flashcards, and conceptual summaries."
+            delay={0.1}
           />
           <Value
             icon={<LayoutDashboard size={20} />}
             title="Progress Analytics"
             text="Automatically track daily focus hours, weekly streaks, and diagnose weak topic areas before exams."
+            delay={0.2}
           />
         </div>
       </main>
@@ -273,10 +303,10 @@ function AuthView({
 
   // Form states
   const [email, setEmail] = useState("ailee@moe-dl.edu.my");
-  const [password, setPassword] = useState("lockin123");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [institution, setInstitution] = useState("Sunway University");
-  const [course, setCourse] = useState("Computer Science");
+  const [institution, setInstitution] = useState("KMPK");
+  const [course, setCourse] = useState("Physical Science");
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
@@ -496,7 +526,7 @@ function AuthView({
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Sarah Tan"
+                    placeholder="e.g. Ailee"
                     className="rounded-xl text-sm"
                     required
                   />
@@ -512,7 +542,7 @@ function AuthView({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="sarah@moe-dl.edu.my"
+                    placeholder="e.g. ailee@moe-dl.edu.my"
                     className="rounded-xl text-sm"
                     required
                   />
@@ -528,20 +558,20 @@ function AuthView({
                     type="text"
                     value={institution}
                     onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="e.g. Sunway University"
+                    placeholder="e.g. KMPK"
                     className="mt-1 rounded-xl text-xs"
                     required
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700">
-                    Course / Major
+                    Course
                   </label>
                   <Input
                     type="text"
                     value={course}
                     onChange={(e) => setCourse(e.target.value)}
-                    placeholder="e.g. Computer Science"
+                    placeholder="e.g. Physical Science"
                     className="mt-1 rounded-xl text-xs"
                     required
                   />
@@ -685,13 +715,21 @@ function Value({
   icon,
   title,
   text,
+  delay = 0,
 }: {
   icon: React.ReactNode;
   title: string;
   text: string;
+  delay?: number;
 }) {
   return (
-    <div className="flex gap-4">
+    <motion.div
+      className="flex gap-4"
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.5, ease: "easeOut", delay }}
+    >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 shadow-xs dark:bg-emerald-950/60 dark:text-emerald-300">
         {icon}
       </span>
@@ -699,6 +737,6 @@ function Value({
         <h2 className="text-base font-bold text-zinc-900 dark:text-white">{title}</h2>
         <p className="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">{text}</p>
       </div>
-    </div>
+    </motion.div>
   );
 }

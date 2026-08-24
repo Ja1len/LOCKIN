@@ -22,6 +22,7 @@ import { useTheme } from "@/lib/theme-provider";
 import { StandalonePomodoroModal } from "@/components/pomodoro/standalone-pomodoro-modal";
 import { type UserProfile, type Subject } from "@/lib/store";
 import { getCurrentUser, logoutUser } from "@/lib/auth";
+import { saveProfile } from "@/lib/api-client";
 
 const DEFAULT_PROFILE: UserProfile = {
   name: "Student",
@@ -227,6 +228,11 @@ export function AppShell({ children, activeNav }: AppShellProps) {
       <StandalonePomodoroModal
         isOpen={pomodoroOpen}
         onClose={() => setPomodoroOpen(false)}
+        subjects={profile.subjects}
+        onSubjectsChange={(subjects) => {
+          setProfile((p) => ({ ...p, subjects }));
+          saveProfile({ subjects });
+        }}
       />
 
       {/* Global Theme Selector Modal */}

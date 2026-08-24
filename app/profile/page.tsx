@@ -21,12 +21,13 @@ import { Input } from "@/components/ui/input";
 import { useTheme } from "@/lib/theme-provider";
 import {
   type UserProfile,
-  type Subject,
   type StudySession,
   type QuizResultRecord,
 } from "@/lib/store";
 import { getSessions, getQuizResults } from "@/lib/api-client";
 import { getCurrentUser, updateUserAccount } from "@/lib/auth";
+import { useSubjects } from "@/lib/use-subjects";
+import { calculateStudyStreak } from "@/lib/streak";
 
 const EMPTY_PROFILE: UserProfile = {
   name: "",
@@ -44,11 +45,15 @@ export default function ProfilePage() {
   const [institution, setInstitution] = useState("");
   const [course, setCourse] = useState("");
   const [email, setEmail] = useState("");
-  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubjectInput, setNewSubjectInput] = useState("");
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [quizResults, setQuizResults] = useState<QuizResultRecord[]>([]);
+
+  const { subjects, addSubject, removeSubject } = useSubjects(profile.subjects, (updated) => {
+    setProfile((p) => ({ ...p, subjects: updated }));
+    updateUserAccount({ subjects: updated });
+  });
 
   useEffect(() => {
     getCurrentUser().then((user) => {
@@ -66,22 +71,22 @@ export default function ProfilePage() {
       setInstitution(user.institution);
       setCourse(user.course);
       setEmail(user.email);
-      setSubjects(user.subjects);
     });
     getSessions().then(setSessions);
     getQuizResults().then(setQuizResults);
   }, []);
 
   // Statistics
-  const totalMinutes = sessions.reduce((acc, s) => acc + s.duration, 0) + 120; // Base history for realistic demo
+  const totalMinutes = sessions.reduce((acc, s) => acc + s.duration, 0);
   const totalHours = (totalMinutes / 60).toFixed(1);
-  const completedBlocks = sessions.length + 8;
+  const completedBlocks = sessions.length;
   const avgQuizAccuracy =
     quizResults.length > 0
       ? Math.round(
           quizResults.reduce((acc, r) => acc + r.percentage, 0) / quizResults.length
         )
       : 85;
+  const streak = calculateStudyStreak(sessions);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,24 +110,10 @@ export default function ProfilePage() {
     setTimeout(() => setSavedSuccess(false), 3500);
   };
 
-  const handleAddSubject = async (e: React.FormEvent) => {
+  const handleAddSubject = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = newSubjectInput.trim();
-    if (!val) return;
-    if (!subjects.includes(val as Subject)) {
-      const updated = [...subjects, val as Subject];
-      setSubjects(updated);
-      setProfile({ ...profile, subjects: updated });
-      await updateUserAccount({ subjects: updated });
-    }
+    addSubject(newSubjectInput);
     setNewSubjectInput("");
-  };
-
-  const handleRemoveSubject = async (sub: Subject) => {
-    const updated = subjects.filter((s) => s !== sub);
-    setSubjects(updated);
-    setProfile({ ...profile, subjects: updated });
-    await updateUserAccount({ subjects: updated });
   };
 
   return (
@@ -180,7 +171,7 @@ export default function ProfilePage() {
               <span>Current Streak</span>
             </div>
             <p className="mt-2 font-mono text-2xl font-bold text-[var(--ink)]">
-              5 <span className="text-xs font-normal text-[var(--muted)]">days</span>
+              {streak.current} <span className="text-xs font-normal text-[var(--muted)]">days</span>
             </p>
           </div>
         </div>
@@ -285,7 +276,7 @@ export default function ProfilePage() {
                 <span>{sub}</span>
                 <button
                   type="button"
-                  onClick={() => handleRemoveSubject(sub)}
+                  onClick={() => removeSubject(sub)}
                   className="text-emerald-700 hover:text-rose-600 dark:text-emerald-400 dark:hover:text-rose-400"
                   aria-label={`Remove ${sub}`}
                 >

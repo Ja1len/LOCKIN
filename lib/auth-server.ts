@@ -65,6 +65,7 @@ export type SessionUser = {
   subjects: string[];
   avatarInitial: string;
   theme: string;
+  dailyGoalMinutes: number;
 };
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -87,5 +88,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     subjects: user.subjects,
     avatarInitial: user.avatarInitial,
     theme: user.theme,
+    dailyGoalMinutes: user.dailyGoalMinutes,
   };
 }

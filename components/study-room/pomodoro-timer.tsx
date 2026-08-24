@@ -10,16 +10,16 @@ interface PomodoroTimerProps {
   resetKey: number;
   onComplete: (subject: Subject) => void;
   defaultSubject?: Subject;
+  subjects: Subject[];
   roomType?: string;
 }
-
-const subjects: Subject[] = ["Mathematics", "Physics", "Computer Science", "Biology"];
 
 export function PomodoroTimer({
   running,
   resetKey,
   onComplete,
   defaultSubject = "Physics",
+  subjects,
   roomType = "Silent Focus",
 }: PomodoroTimerProps) {
   const [seconds, setSeconds] = useState(25 * 60);
@@ -105,7 +105,7 @@ export function PomodoroTimer({
           onChange={(e) => setSubject(e.target.value as Subject)}
           className="mt-1.5 block w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-white outline-none disabled:opacity-60"
         >
-          {subjects.map((item) => (
+          {(subjects.length > 0 ? subjects : [defaultSubject]).map((item) => (
             <option key={item} value={item} className="text-zinc-900">
               {item}
             </option>

@@ -19,6 +19,8 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { type StudySession, type QuizResultRecord } from "@/lib/store";
 import { getSessions, getQuizResults } from "@/lib/api-client";
+import { calculateStudyStreak } from "@/lib/streak";
+import { getSubjectStudyMinutes } from "@/lib/study-stats";
 
 export default function ProgressPage() {
   const [sessions, setSessions] = useState<StudySession[]>([]);
@@ -44,15 +46,10 @@ export default function ProgressPage() {
   const weeklyTotalMinutes = daysOfWeek.reduce((acc, d) => acc + d.minutes, 0);
   const weeklyTotalHours = (weeklyTotalMinutes / 60).toFixed(1);
 
-  // Subject Breakdown calculation
-  const subjectTotals: { [key: string]: number } = {
-    Physics: 310,
-    Mathematics: 240,
-    "Computer Science": 180,
-    Biology: 75,
-  };
-
+  // Subject Breakdown calculation (all-time, derived from real sessions)
+  const subjectTotals = getSubjectStudyMinutes(sessions);
   const totalSubjectMinutes = Object.values(subjectTotals).reduce((a, b) => a + b, 0);
+  const streak = calculateStudyStreak(sessions);
 
   // Quiz Stats
   const totalQuizzes = quizResults.length + 5;
@@ -118,9 +115,9 @@ export default function ProgressPage() {
               Active Streak
             </span>
             <p className="mt-3 font-mono text-3xl font-bold text-[var(--ink)]">
-              5 <span className="text-xs font-normal text-[var(--muted)]">days</span>
+              {streak.current} <span className="text-xs font-normal text-[var(--muted)]">days</span>
             </p>
-            <p className="mt-1 text-[11px] text-[var(--muted)]">Best record: 12 days</p>
+            <p className="mt-1 text-[11px] text-[var(--muted)]">Best record: {streak.best} days</p>
           </div>
 
           <div className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5 shadow-xs">
@@ -208,6 +205,11 @@ export default function ProgressPage() {
             </div>
 
             <div className="space-y-4">
+              {totalSubjectMinutes === 0 && (
+                <p className="text-xs text-[var(--muted)]">
+                  Complete a focus block to see your subject breakdown here.
+                </p>
+              )}
               {Object.entries(subjectTotals).map(([subject, mins]) => {
                 const percent = Math.round((mins / totalSubjectMinutes) * 100);
                 const hrs = (mins / 60).toFixed(1);

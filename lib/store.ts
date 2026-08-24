@@ -7,6 +7,7 @@ export interface UserProfile {
   email: string;
   subjects: Subject[];
   avatarInitial: string;
+  dailyGoalMinutes?: number;
 }
 
 export interface StudySession {
@@ -89,3 +90,11 @@ export interface QuizResultRecord {
 }
 
 export type ThemeMode = "clean" | "focus" | "energy";
+
+export interface Todo {
+  id: string;
+  title: string;
+  completed: boolean;
+  createdAt: string;
+  completedAt?: string;
+}
