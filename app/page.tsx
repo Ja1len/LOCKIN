@@ -302,7 +302,7 @@ function AuthView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form states
-  const [email, setEmail] = useState("ailee@moe-dl.edu.my");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("KMPK");
